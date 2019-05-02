@@ -12,12 +12,13 @@
   You should have received a copy of the GNU General Public License
   along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-
+  $time_array = [];
+  $number_counter=0;
 function RepresentationValidation_HbbTV_DVB(){
     global $hbbtv_conformance, $dvb_conformance, $session_dir, $mpd_dom,
             $current_period, $current_adaptation_set, $current_representation, 
             $period_timing_info, $adaptation_set_template, $reprsentation_template,$subtitle_segments_location, 
-            $reprsentation_error_log_template, $string_info, $progress_report, $progress_xml;
+            $reprsentation_error_log_template, $string_info, $progress_report, $progress_xml,$time_array;
     
     $rep_error_file = str_replace(array('$AS$', '$R$'), array($current_adaptation_set, $current_representation), $reprsentation_error_log_template);
     if(!($opfile = open_file($session_dir.'/Period'.$current_period.'/'.$rep_error_file.'.txt', 'a'))){
@@ -29,6 +30,22 @@ function RepresentationValidation_HbbTV_DVB(){
     $adapt_dir = str_replace('$AS$', $current_adaptation_set, $adaptation_set_template);
     $rep_dir = str_replace(array('$AS$', '$R$'), array($current_adaptation_set, $current_representation), $reprsentation_template);
     $xml_rep = get_DOM($session_dir.'/Period'.$current_period.'/'.$adapt_dir.'/'.$rep_dir.'.xml', 'atomlist');
+    $time_file = file($session_dir.'/Period'.$current_period.'/'.$rep_dir.'_infofile.txt');
+    $time_array = [];
+    array_splice($time_file,0,4);
+    
+    foreach($time_file as $time_values){
+        $counter++;
+        if($counter==count($time_file)){
+            break;
+        }
+        $value_holder = explode(" ",$time_values);
+        array_splice($value_holder,0,1);
+        array_splice($value_holder,1,1);
+        array_push($time_array,$value_holder);  
+    }
+    $diff = $time_array[0][0]-$time_array[0][1];
+
     if($xml_rep){
         if($dvb_conformance){
             $media_types = media_types($mpd_dom->getElementsByTagName('Period')->item($current_period));
@@ -159,7 +176,7 @@ function is_subtitle(){
 
 function common_validation_DVB($opfile, $xml_rep, $media_types){
     global $session_dir, $mpd_features, $current_period, $current_adaptation_set, $current_representation, $profiles,
-            $sizearray, $reprsentation_template, $subtitle_segments_location;
+            $sizearray, $reprsentation_template, $subtitle_segments_location,$time_array;
     
     $adapt = $mpd_features['Period'][$current_period]['AdaptationSet'][$current_adaptation_set];
     $rep = $adapt['Representation'][$current_representation];
@@ -423,8 +440,20 @@ function common_validation_DVB($opfile, $xml_rep, $media_types){
     for($j=0;$j<$num_moofs-1;$j++){
         $cummulatedSampleDuration=$xml_rep->getElementsByTagName('trun')->item($j)->getAttribute('cummulatedSampleDuration');
         $segDur=$cummulatedSampleDuration/$timescale;
-        
-        if(empty($subsegment_signaling) || (!empty($subsegment_signaling) && sizeof(array_unique($subsegment_signaling)) == 1 && in_array(0, $subsegment_signaling))){
+      
+        if(empty($subsegment_signaling)){
+            if($j<count($time_array)){
+            $segDurwithoutsidx = (float)$time_array[$j][1]-(float)$time_array[$j][0];
+                if($hdlr_type =='vide' && $segDurwithoutsidx>15)
+                   fwrite($opfile, "###'DVB check violated Section 4.5: Where subsegments are not signalled, each video segment SHALL have a duration of not more than 15 seconds', segment ".($j+1)." found with duration ".$segDurwithoutsidx." \n");
+                if($hdlr_type =='soun' && $segDurwithoutsidx>15)
+                   fwrite($opfile, "###'DVB check violated Section 4.5: Where subsegments are not signalled, each audio segment SHALL have a duration of not more than 15 seconds', segment ".($j+1)." found with duration ".$segDurwithoutsidx." \n");
+            
+                if($segDurwithoutsidx <1)
+                   fwrite($opfile, "###'DVB check violated Section 4.5: Segment duration SHALL be at least 1 second except for the last segment of a Period', segment ".($j+1)." found with duration ".$segDurwithoutsidx." \n");   
+            }
+        }
+        else if(!empty($subsegment_signaling) && sizeof(array_unique($subsegment_signaling)) == 1 && in_array(0, $subsegment_signaling)){
             if($hdlr_type =='vide' && $segDur>15)
                 fwrite($opfile, "###'DVB check violated Section 4.5: Where subsegments are not signalled, each video segment SHALL have a duration of not more than 15 seconds', segment ".($j+1)." found with duration ".$segDur." \n");
             if($hdlr_type =='soun' && $segDur>15)
@@ -563,7 +592,7 @@ function common_validation_DVB($opfile, $xml_rep, $media_types){
 }
 
 function common_validation_HbbTV($opfile, $xml_rep){
-    global $session_dir, $mpd_features, $current_period, $current_adaptation_set, $current_representation, $reprsentation_template;
+    global $session_dir, $mpd_features, $current_period, $current_adaptation_set, $current_representation, $reprsentation_template,$time_array;
     
     $adapt = $mpd_features['Period'][$current_period]['AdaptationSet'][$current_adaptation_set];
     $rep = $adapt['Representation'][$current_representation];
@@ -699,7 +728,20 @@ function common_validation_HbbTV($opfile, $xml_rep){
         $cummulatedSampleDuration=$xml_rep->getElementsByTagName('trun')->item($j)->getAttribute('cummulatedSampleDuration');
         $segDur=$cummulatedSampleDuration/$timescale;
         
-        if(empty($subsegment_signaling) || (!empty($subsegment_signaling) && sizeof(array_unique($subsegment_signaling)) == 1 && in_array(0, $subsegment_signaling))){
+        if(empty($subsegment_signaling)){
+            if($j<count($time_array)){
+            $segDurwithoutsidx = (float)$time_array[$j][1]-(float)$time_array[$j][0];
+                if($hdlr_type =='vide' && $segDurwithoutsidx>15)
+                   fwrite($opfile, "###'DVB check violated Section 4.5: Where subsegments are not signalled, each video segment SHALL have a duration of not more than 15 seconds', segment ".($j+1)." found with duration ".$segDurwithoutsidx." \n");
+                if($hdlr_type =='soun' && $segDurwithoutsidx>15)
+                   fwrite($opfile, "###'DVB check violated Section 4.5: Where subsegments are not signalled, each audio segment SHALL have a duration of not more than 15 seconds', segment ".($j+1)." found with duration ".$segDurwithoutsidx." \n");
+            
+                if($segDurwithoutsidx <1)
+                   fwrite($opfile, "###'DVB check violated Section 4.5: Segment duration SHALL be at least 1 second except for the last segment of a Period', segment ".($j+1)." found with duration ".$segDurwithoutsidx." \n");   
+            }
+        }
+        
+        else if(!empty($subsegment_signaling) && sizeof(array_unique($subsegment_signaling)) == 1 && in_array(0, $subsegment_signaling)){
             if($hdlr_type =='vide' && $segDur>15)
                 fwrite($opfile, "###'HbbTV check violated Section E.2.3: Each video segment shall have a duration of not more than 15s', segment ".($j+1)." found with duration ".$segDur." \n");
             if($hdlr_type =='soun' && $segDur>15)
@@ -890,7 +932,7 @@ function seg_timing_common($opfile, $xml_rep){
 
 function bitrate_report($xml_rep){
     global $session_dir, $mpd_features, $current_period, $current_adaptation_set, $current_representation, 
-            $sizearray, $segment_duration_array, $reprsentation_template;
+            $sizearray, $segment_duration_array, $reprsentation_template,$time_array;
     
     $bandwidth = $mpd_features['Period'][$current_period]['AdaptationSet'][$current_adaptation_set]['Representation'][$current_representation]['bandwidth'];
     
@@ -905,18 +947,17 @@ function bitrate_report($xml_rep){
     $timescale=$xml_rep->getElementsByTagName('mdhd')->item(0)->getAttribute('timescale');
     $num_moofs=$xml_rep->getElementsByTagName('moof')->length;
     $bitrate_info = '';
-    $segment_duration_array = array();
+    $segment_duration_array = array();    
     $sidx_index = 0;
     $cum_subsegDur = 0;
     // Here 2 possible cases are considered for sidx -subsegment signalling.
     //First case is for no sidx box.
     if(empty($subsegment_signaling)){
-        for($j=0;$j<$num_moofs;$j++){
-            $cummulatedSampleDuration=$xml_rep->getElementsByTagName('trun')->item($j)->getAttribute('cummulatedSampleDuration');
-            $segDur=$cummulatedSampleDuration/$timescale;
+        for($j=0;$j<count($time_array);$j++){
+            $segDurwithoutsidx = (float)$time_array[$j][1]-(float)$time_array[$j][0];
             $segSize = $sizearray[$j];
-            $segment_duration_array[] = round($segDur, 2);
-            $bitrate_info = $bitrate_info . (string)($segSize*8/$segDur) . ',';
+            $segment_duration_array[] = round($segDurwithoutsidx, 2);
+            $bitrate_info = $bitrate_info . (string)($segSize*8/$segDurwithoutsidx) . ',';
         }
     }
     //Secondly, sidx exists with non-zero reference counts- 1) all segments have subsegments (referenced by some sidx boxes) 2) only some segments have subsegments. 
