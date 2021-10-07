@@ -238,7 +238,7 @@ function common_validation_DVB($opfile, $xml_rep, $media_types){
                     fwrite($opfile, "###'HbbTV-DVB DASH Validation Requirements check violated for DVB: Section 'Codec information' - profile used for the AVC codec in Segment is not supported by the specification Section 5.1.1', found " . $nal_unit->getAttribute('profile_idc') . ".\n");
             
                 $level_idc = $nal_unit->getElementsByTagName('comment')->item(0)->getAttribute('level_idc');
-                if($level_idc != 30 && $level_idc != 31 && $level_idc != 32 && $level_idc != 40)
+                if(!($level_idc == 30 || $level_idc == 31 || $level_idc == 32 || $level_idc != 40))
                     fwrite($opfile, "###'HbbTV-DVB DASH Validation Requirements check violated for DVB: Section 'Codec information' - level used for the AVC codec in Segment is not supported by the specification Section 5.1.1', found $level_idc.\n");
             }
         }
@@ -408,7 +408,7 @@ function common_validation_DVB($opfile, $xml_rep, $media_types){
     ## Segment checks
     $moof_boxes = $xml_rep->getElementsByTagName('moof');
     // Section 4.3 on on-demand profile periods containing sidx boxes
-    if(strpos($profiles[$current_period][$current_period][$current_adaptation_set][$current_representation], 'urn:mpeg:dash:profile:isoff-on-demand:2011') !== FALSE || strpos($profiles[$current_adaptation_set][$current_representation], 'urn:dvb:dash:profile:dvb-dash:isoff-ext-on-demand:2014') !== FALSE){
+    if(strpos($profiles[$current_period][$current_adaptation_set][$current_representation], 'urn:mpeg:dash:profile:isoff-on-demand:2011') !== FALSE || strpos($profiles[$current_period][$current_adaptation_set][$current_representation], 'urn:dvb:dash:profile:dvb-dash:isoff-ext-on-demand:2014') !== FALSE){
         if($xml_rep->getElementsByTagName('sidx')->length != 1)
             fwrite($opfile, "###'HbbTV-DVB DASH Validation Requirements check violated for DVB: Section 'Segments' - 'Segment includes features that are not required by the profile being validated against', found ". $xml_rep->getElementsByTagName('sidx')->length ." sidx boxes while according to Section 4.3 \"(For On Demand profile) The segment SHALL contain only one single Segment Index box ('sidx) for the entire segment\"'.\n");
         
@@ -633,7 +633,7 @@ function common_validation_HbbTV($opfile, $xml_rep){
         foreach($nal_units as $nal_unit){
             if($nal_unit->getAttribute('nal_type') == '0x07'){
                 if((int)$width <= 720 && (int)$height <= 576){
-                    if($nal_unit->getAttribute('profile_idc') != 77 && $nal_unit->getAttribute('profile_idc') != 100)
+                    if(!($nal_unit->getAttribute('profile_idc') == 77 || $nal_unit->getAttribute('profile_idc') == 100))
                         fwrite($opfile, "###'HbbTV-DVB DASH Validation Requirements check violated for HbbTV: Section 'Codec information' - profile used for the codec in Segment is not supported by the specification Section 7.3.1', found " . $nal_unit->getAttribute('profile_idc') . ".\n");
                     
                     $level_idc = $nal_unit->getElementsByTagName('comment')->item(0)->getAttribute('level_idc');
@@ -1023,9 +1023,12 @@ function seg_duration_checks($opfile){
                         if($repetition == ''){
                             $repetition = 1;
                         }
-                        for($i = 0; $i< $repetition; $i++){
-                            $MPD_duration_sec_array[] = round(($duration / $timescale), 2);
+                        if(is_string($repetition)){
+                          $repetition = intval($repetition);
                         }
+                            for($k = 0; $k< $repetition; $k++){
+                                $MPD_duration_sec_array[] = round(($duration / $timescale), 2);
+                            }
                     }
                 }
                 for($j = 0; $j < count($MPD_duration_sec_array); $j++ ){
